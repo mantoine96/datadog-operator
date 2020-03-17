@@ -23,8 +23,7 @@ const (
 	defaultAgentImage                             string = "datadog/agent:latest"
 	defaultCollectEvents                          bool   = false
 	defaultLeaderElection                         bool   = false
-	defaultUseCriSocketVolume                     bool   = true
-	defaultCriSocketPath                          string = "/var/run/docker.sock"
+	defaultDockerSocketPath                       string = "/var/run/docker.sock"
 	defaultDogstatsdOriginDetection               bool   = false
 	defaultUseDogStatsDSocketVolume               bool   = false
 	defaultApmEnabled                             bool   = false
@@ -182,7 +181,7 @@ func IsDefaultedDatadogAgentSpecAgentConfig(config *NodeAgentConfig) bool {
 		return false
 	}
 
-	if config.CriSocket.UseCriSocketVolume == nil {
+	if config.CriSocket.DockerSocketPath == nil {
 		return false
 	}
 
@@ -427,8 +426,7 @@ func DefaultDatadogAgentSpecAgentConfig(config *NodeAgentConfig) *NodeAgentConfi
 
 	if config.CriSocket == nil {
 		config.CriSocket = &CRISocketConfig{
-			UseCriSocketVolume: NewBoolPointer(defaultUseCriSocketVolume),
-			CriSocketPath:      NewStringPointer(defaultCriSocketPath),
+			DockerSocketPath: NewStringPointer(defaultDockerSocketPath),
 		}
 	}
 
