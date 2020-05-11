@@ -3,6 +3,7 @@ module github.com/DataDog/datadog-operator
 go 1.13
 
 require (
+	github.com/DataDog/datadog-api-client-go v1.0.0-beta.2 // indirect
 	github.com/datadog/extendeddaemonset v0.1.1-0.20191230093751-ddf06307a8ea
 	github.com/dsnet/compress v0.0.1 // indirect
 	github.com/frankban/quicktest v1.9.0 // indirect
@@ -19,11 +20,11 @@ require (
 	github.com/pierrec/lz4 v2.4.1+incompatible // indirect
 	github.com/spf13/cobra v1.0.0
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.4.0
+	github.com/stretchr/testify v1.5.1
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	github.com/zorkian/go-datadog-api v2.25.0+incompatible
 	gopkg.in/DATA-DOG/go-sqlmock.v1 v1.3.0 // indirect
-	gopkg.in/yaml.v2 v2.2.4
+	gopkg.in/yaml.v2 v2.2.8
 	k8s.io/api v0.0.0
 	k8s.io/apimachinery v0.0.0
 	k8s.io/cli-runtime v0.0.0

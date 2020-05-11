@@ -19,6 +19,7 @@ import (
 	"github.com/DataDog/datadog-operator/pkg/controller/utils/condition"
 	"github.com/DataDog/datadog-operator/pkg/secrets"
 
+	datadogv1 "github.com/DataDog/datadog-api-client-go/api/v1/datadog"
 	"github.com/go-logr/logr"
 	api "github.com/zorkian/go-datadog-api"
 	corev1 "k8s.io/api/core/v1"
@@ -63,24 +64,25 @@ var (
 // metricsForwarder sends metrics directly to Datadog using the public API
 // its lifecycle must be handled by a ForwardersManager
 type metricsForwarder struct {
-	id                  string
-	datadogClient       api.Client
-	k8sClient           client.Client
-	keysHash            uint64
-	retryInterval       time.Duration
-	sendMetricsInterval time.Duration
-	metricsPrefix       string
-	globalTags          []string
-	tags                []string
-	stopChan            chan struct{}
-	errorChan           chan error
-	eventChan           chan Event
-	lastReconcileErr    error
-	namespacedName      types.NamespacedName
-	logger              logr.Logger
-	delegator           delegatedAPI
-	decryptor           secrets.Decryptor
-	creds               sync.Map
+	id                   string
+	datadogClient        datadogv1.APIClient
+	datadogClientContext context.Context
+	k8sClient            client.Client
+	keysHash             uint64
+	retryInterval        time.Duration
+	sendMetricsInterval  time.Duration
+	metricsPrefix        string
+	globalTags           []string
+	tags                 []string
+	stopChan             chan struct{}
+	errorChan            chan error
+	eventChan            chan Event
+	lastReconcileErr     error
+	namespacedName       types.NamespacedName
+	logger               logr.Logger
+	delegator            delegatedAPI
+	decryptor            secrets.Decryptor
+	creds                sync.Map
 	sync.Mutex
 	status *datadoghqv1alpha1.DatadogAgentCondition
 }
@@ -90,7 +92,7 @@ type delegatedAPI interface {
 	delegatedSendDeploymentMetric(float64, string, []string) error
 	delegatedSendReconcileMetric(float64, []string) error
 	delegatedSendEvent(string, EventType) error
-	delegatedValidateCreds(string, string) (*api.Client, error)
+	delegatedValidateCreds(*datadogv1.APIClient, string, string, string) (context.Context, error)
 }
 
 // newMetricsForwarder returs a new Datadog MetricsForwarder instance
@@ -206,7 +208,7 @@ func (mf *metricsForwarder) connectToDatadogAPI() (bool, error) {
 		return false, nil
 	}
 	mf.logger.Info("Initializing Datadog metrics forwarder")
-	if err = mf.initAPIClient(apiKey, appKey); err != nil {
+	if err = mf.initAPIClient(dda.Spec.Site, apiKey, appKey); err != nil {
 		mf.logger.Error(err, "cannot get Datadog metrics forwarder to send deployment metrics, will retry later...")
 		return false, nil
 	}
@@ -321,43 +323,69 @@ func (mf *metricsForwarder) setLastReconcileError(newErr error) {
 }
 
 // initAPIClient initializes and validates the Datadog API client
-func (mf *metricsForwarder) initAPIClient(apiKey, appKey string) error {
+func (mf *metricsForwarder) initAPIClient(site, apiKey, appKey string) error {
 	if mf.delegator == nil {
 		mf.delegator = mf
 	}
-	datadogClient, err := mf.validateCreds(apiKey, appKey)
+
+	ddClient := datadogv1.NewAPIClient(datadogv1.NewConfiguration())
+	if ddClient != nil {
+		mf.datadogClient = *ddClient
+	} else {
+		return fmt.Errorf("Unable to create DatadogClient")
+	}
+
+	context, err := mf.validateCreds(ddClient, site, apiKey, appKey)
 	if err != nil {
 		return err
 	}
-	mf.datadogClient = *datadogClient
-	mf.keysHash = hashKeys(apiKey, appKey)
+	mf.datadogClientContext = context
+	mf.keysHash = hashKeys(site, apiKey, appKey)
 	return nil
 }
 
 // updateCredsIfNeeded used to update Datadog apiKey and appKey if they change
-func (mf *metricsForwarder) updateCredsIfNeeded(apiKey, appKey string) error {
-	if mf.keysHash != hashKeys(apiKey, appKey) {
-		return mf.initAPIClient(apiKey, appKey)
+func (mf *metricsForwarder) updateCredsIfNeeded(site, apiKey, appKey string) error {
+	if mf.keysHash != hashKeys(site, apiKey, appKey) {
+		return mf.initAPIClient(site, apiKey, appKey)
 	}
 	return nil
 }
 
 // validateCreds returns validates the creds by querying the Datadog API
-func (mf *metricsForwarder) validateCreds(apiKey, appKey string) (*api.Client, error) {
-	return mf.delegator.delegatedValidateCreds(apiKey, appKey)
+func (mf *metricsForwarder) validateCreds(datadogClient *datadogv1.APIClient, site, apiKey, appKey string) (context.Context, error) {
+	return mf.delegator.delegatedValidateCreds(datadogClient, site, apiKey, appKey)
 }
 
 // delegatedValidateCreds is separated from validateCreds to facilitate mocking the Datadog API
-func (mf *metricsForwarder) delegatedValidateCreds(apiKey, appKey string) (*api.Client, error) {
-	datadogClient := api.NewClient(apiKey, appKey)
-	valid, err := datadogClient.Validate()
+func (mf *metricsForwarder) delegatedValidateCreds(datadogClient *datadogv1.APIClient, site, apiKey, appKey string) (context.Context, error) {
+	newContext := context.WithValue(
+		context.Background(),
+		datadogv1.ContextAPIKeys,
+		map[string]datadogv1.APIKey{
+			"apiKeyAuth": {
+				Key: apiKey,
+			},
+			"appKeyAuth": {
+				Key: appKey,
+			},
+		},
+	)
+	if len(site) > 0 {
+		newContext = context.WithValue(newContext, datadogv1.ContextServerIndex, 1)
+		newContext = context.WithValue(newContext, datadogv1.ContextServerVariables, map[string]string{
+			"name": site,
+		})
+	}
+
+	// Using fake metric name to perform credentials validation
+	currentTs := time.Now().UTC().Unix()
+	_, _, err := datadogClient.MetricsApi.QueryMetrics(newContext).From(currentTs - 10).To(currentTs).Query("authvalidationmetric{*}").Execute()
+
 	if err != nil {
-		return nil, fmt.Errorf("cannot validate datadog credentials: %v", err)
+		return nil, err
 	}
-	if !valid {
-		return nil, errors.New("invalid datadog credentials")
-	}
-	return datadogClient, nil
+	return newContext, nil
 }
 
 // sendStatusMetrics forwards metrics for each component deployment (agent, clusteragent, clustercheck runner)
@@ -437,6 +465,7 @@ func (mf *metricsForwarder) delegatedSendDeploymentMetric(metricValue float64, c
 			Tags: tags,
 		},
 	}
+	datadogv1.APIKey
 	return mf.datadogClient.PostMetrics(serie)
 }
 
@@ -466,8 +495,9 @@ func (mf *metricsForwarder) initGlobalTags() {
 
 // hashKeys is used to detect if credentials have changed
 // hashKeys is NOT a security function
-func hashKeys(apiKey, appKey string) uint64 {
+func hashKeys(apiKey, appKey, site string) uint64 {
 	h := fnv.New64()
+	_, _ = h.Write([]byte(site))
 	_, _ = h.Write([]byte(apiKey))
 	_, _ = h.Write([]byte(appKey))
 	return h.Sum64()
@@ -622,6 +652,7 @@ func (mf *metricsForwarder) delegatedSendReconcileMetric(metricValue float64, ta
 		},
 	}
 	return mf.datadogClient.PostMetrics(serie)
+	context.Background()
 }
 
 // forwardEvent sends events to Datadog
