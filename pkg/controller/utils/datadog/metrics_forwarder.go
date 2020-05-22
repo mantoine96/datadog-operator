@@ -361,7 +361,7 @@ func (mf *metricsForwarder) delegatedValidateCreds(apiKey, appKey string) (*api.
 		return nil, fmt.Errorf("cannot validate datadog credentials: %v", err)
 	}
 	if !valid {
-		return nil, errors.New("invalid datadog credentials")
+		return nil, fmt.Errorf("invalid datadog credentials on %s", mf.baseURL)
 	}
 	return datadogClient, nil
 }
@@ -663,8 +663,8 @@ func (mf *metricsForwarder) isEventChanFull() bool {
 func getbaseURL(dda *datadoghqv1alpha1.DatadogAgent) string {
 	if dda.Spec.Agent.Config.DDUrl != nil {
 		return *dda.Spec.Agent.Config.DDUrl
-	} else if dda.Spec.Site != "" && dda.Spec.Site == "EU" {
-		return "https://api.datadoghq.eu"
+	} else if dda.Spec.Site != "" {
+		return fmt.Sprintf("https://api.%s", dda.Spec.Site)
 	}
 	return "https://api.datadoghq.com"
 }
