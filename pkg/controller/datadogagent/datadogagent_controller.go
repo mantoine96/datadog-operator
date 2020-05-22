@@ -7,6 +7,7 @@ package datadogagent
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	datadoghqv1alpha1 "github.com/DataDog/datadog-operator/pkg/apis/datadoghq/v1alpha1"
@@ -284,17 +285,23 @@ func (r *ReconcileDatadogAgent) internalReconcile(request reconcile.Request) (re
 			r.reconcileClusterChecksRunner,
 			r.reconcileAgent,
 		}
+	reqLogger.Info("Running reconcile functions")
 	for _, reconcileFunc := range reconcileFuncs {
 		result, err = reconcileFunc(reqLogger, instance, newStatus)
 		if shouldReturn(result, err) {
 			return r.updateStatusIfNeeded(reqLogger, instance, newStatus, result, err)
 		}
 	}
+	reqLogger.Info("Finished running reconcile functions")
 
 	// Always requeue
 	if !result.Requeue && result.RequeueAfter == 0 {
 		result.RequeueAfter = defaultRequeuePeriod
 	}
+	reqLogger.Info(fmt.Sprintf("Finished reconciling DatadogAgent. Will requeue after %d", defaultRequeuePeriod))
+	reqLogger.Info(fmt.Sprintf("New agent status: %s", newStatus.Agent.Status))
+	reqLogger.Info(fmt.Sprintf("New cluster agent status: %s", newStatus.ClusterAgent.Status))
+	reqLogger.Info(fmt.Sprintf("New cluster checks runner status: %s", newStatus.ClusterChecksRunner.Status))
 	return r.updateStatusIfNeeded(reqLogger, instance, newStatus, result, err)
 }
 
