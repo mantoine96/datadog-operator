@@ -1179,8 +1179,12 @@ func updateDaemonSetStatus(ds *appsv1.DaemonSet, dsStatus *datadoghqv1alpha1.Dae
 	dsStatus.UpToDate = ds.Status.UpdatedNumberScheduled
 
 	var deploymentState datadoghqv1alpha1.DatadogAgentState
+	fmt.Printf("INFO ON %s", ds.GetName())
+	fmt.Printf("STATUS: Available: %d Ready: %d Current: %d", dsStatus.Available, dsStatus.Ready, dsStatus.Current)
+	fmt.Printf("STATUS: Desired: %d Up To Date: %d", dsStatus.Desired, dsStatus.UpToDate)
 	switch {
 	case dsStatus.UpToDate != dsStatus.Desired:
+
 		deploymentState = datadoghqv1alpha1.DatadogAgentStateUpdating
 	case dsStatus.Ready == 0:
 		deploymentState = datadoghqv1alpha1.DatadogAgentStateProgressing
