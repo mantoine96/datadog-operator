@@ -49,7 +49,7 @@ const (
 	reconcileMetricFormat       = "%s.reconcile.success"
 	reconcileErrTagFormat       = "reconcile_err:%s"
 	datadogOperatorSourceType   = "datadog_operator"
-	defaultBaseUrl              = "https://api.datadoghq.com"
+	defaultbaseURL              = "https://api.datadoghq.com"
 )
 
 var (
@@ -82,7 +82,7 @@ type metricsForwarder struct {
 	delegator           delegatedAPI
 	decryptor           secrets.Decryptor
 	creds               sync.Map
-	baseUrl             string
+	baseURL             string
 	sync.Mutex
 	status *datadoghqv1alpha1.DatadogAgentCondition
 }
@@ -110,7 +110,7 @@ func newMetricsForwarder(k8sClient client.Client, decryptor secrets.Decryptor, o
 		lastReconcileErr:    errInitValue,
 		decryptor:           decryptor,
 		creds:               sync.Map{},
-		baseUrl:             defaultBaseUrl,
+		baseURL:             defaultbaseURL,
 		logger:              log.WithValues("CustomResource.Namespace", obj.GetNamespace(), "CustomResource.Name", obj.GetName()),
 	}
 }
@@ -204,7 +204,7 @@ func (mf *metricsForwarder) connectToDatadogAPI() (bool, error) {
 	mf.logger.Info("Getting Datadog credentials")
 	apiKey, appKey, err := mf.getCredentials(dda)
 	mf.logger.Info("Getting Datadog Site")
-	mf.baseUrl = getBaseUrl(dda)
+	mf.baseURL = getbaseURL(dda)
 	defer mf.updateStatusIfNeeded(err)
 	if err != nil {
 		mf.logger.Error(err, "cannot get Datadog credentials,  will retry later...")
@@ -355,7 +355,7 @@ func (mf *metricsForwarder) validateCreds(apiKey, appKey string) (*api.Client, e
 // delegatedValidateCreds is separated from validateCreds to facilitate mocking the Datadog API
 func (mf *metricsForwarder) delegatedValidateCreds(apiKey, appKey string) (*api.Client, error) {
 	datadogClient := api.NewClient(apiKey, appKey)
-	datadogClient.SetBaseUrl(mf.baseUrl)
+	datadogClient.SetBaseUrl(mf.baseURL)
 	valid, err := datadogClient.Validate()
 	if err != nil {
 		return nil, fmt.Errorf("cannot validate datadog credentials: %v", err)
@@ -660,7 +660,7 @@ func (mf *metricsForwarder) isEventChanFull() bool {
 	return len(mf.eventChan) == cap(mf.eventChan)
 }
 
-func getBaseUrl(dda *datadoghqv1alpha1.DatadogAgent) string {
+func getbaseURL(dda *datadoghqv1alpha1.DatadogAgent) string {
 	if dda.Spec.Agent.Config.DDUrl != nil {
 		return *dda.Spec.Agent.Config.DDUrl
 	} else if dda.Spec.Site != "" && dda.Spec.Site == "EU" {
