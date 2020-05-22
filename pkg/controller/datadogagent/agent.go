@@ -106,6 +106,7 @@ func (r *ReconcileDatadogAgent) reconcileAgent(logger logr.Logger, dda *datadogh
 		return r.createNewDaemonSet(logger, dda, newStatus)
 	}
 
+	fmt.Printf("Updating daemonset %s", ds.GetName())
 	return r.updateDaemonSet(logger, dda, ds, newStatus)
 
 }
@@ -230,9 +231,11 @@ func getHashAnnotation(annotations map[string]string) string {
 }
 
 func (r *ReconcileDatadogAgent) updateDaemonSet(logger logr.Logger, dda *datadoghqv1alpha1.DatadogAgent, ds *appsv1.DaemonSet, newStatus *datadoghqv1alpha1.DatadogAgentStatus) (reconcile.Result, error) {
+
+	fmt.Printf("Running updateDaemonSet for %s", ds.GetName())
 	// Update values from current DS in any case
 	newStatus.Agent = updateDaemonSetStatus(ds, newStatus.Agent, nil)
-
+	fmt.Printf("New status for Agent: %s", newStatus.Agent.Status)
 	newDS, newHash, err := newDaemonSetFromInstance(dda, ds.Spec.Selector)
 	if err != nil {
 		return reconcile.Result{}, err
